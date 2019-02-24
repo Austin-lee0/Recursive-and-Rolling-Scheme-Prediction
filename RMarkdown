@@ -2,7 +2,7 @@
 title: "Homework 2"
 author: "Austin Lee"
 date: "February 7, 2019"
-output:rmarkdown::github_document
+output: github_document
 ---
 
 

@@ -1,0 +1,278 @@
+---
+title: "Homework 2"
+author: "Austin Lee"
+date: "February 7, 2019"
+output:rmarkdown::github_document
+---
+
+
+```{r packages}
+library('dynlm')
+library('forecast')
+options(scipen=999)
+library('tseries')
+library('forecast')
+library('dyn')
+```
+
+#4.4
+
+Running Regression Models with one,two, three and four lags of price growth.
+```{r lagged}
+ts_data1 <- read.table(file = 'C:\\Users\\Austin\\Documents\\R\\Exercise4.4.csv' 
+                       ,header =T, sep =',')
+ts_price<- ts(ts_data1$P, start = 1980, freq = 4)
+price_growth <- diff(log(ts_price))
+plot(price_growth)
+ts_interest_rate <- ts(ts_data1$R..in..., start = 1980, freq = 4)
+interest_change <-diff(log(ts_interest_rate))
+
+
+modlag1 <- dynlm(price_growth ~ L(price_growth,1))
+modlag2 <- dynlm(price_growth ~ L(price_growth,1)+L(price_growth,2))
+modlag3 <- dynlm(price_growth ~ L(price_growth,1)+L(price_growth,2)+
+                   L(price_growth,3))
+modlag4 <- dynlm(price_growth ~ L(price_growth,1)+L(price_growth,2)+L(price_growth,3)+L(price_growth,4))
+summary(modlag1)
+summary(modlag2)
+summary(modlag3)
+summary(modlag4)
+
+AIC(modlag1)
+AIC(modlag2)
+AIC(modlag3)
+AIC(modlag4)
+BIC(modlag1)
+BIC(modlag2)
+BIC(modlag3)
+BIC(modlag4)
+
+#according to AIC and BIC we should pick modlag3
+#Run different regression models by adding two lags for price and interest rate movements.  
+ts_data2 <- read.table(file = 'C:\\Users\\Austin\\Documents\\R\\Exercise4.2.csv', header =T, sep = ',')
+
+ts_annual_price <- ts(ts_data2$P, start = 1980, freq  = 12)
+ts_annual_interest_rate <- ts(ts_data2$R..in..., start = 1980, freq = 12)
+price_growth_annual <- diff(log(ts_annual_price))
+interest_change_annual <-diff(log(ts_annual_interest_rate))
+
+modquestion2 <- dynlm(price_growth_annual ~ L(price_growth_annual,1)+L(price_growth_annual,2)+ 
+                        L(interest_change_annual,1)+L(interest_change_annual,2)+ 
+                        L(price_growth_annual,3)+
+                        L(interest_change_annual,3))
+
+summary(modquestion2)
+AIC(modquestion2)
+BIC(modquestion2)
+
+
+```
+
+When we compare the models between lag 1,2,3,4 we see that modlag3, has the best AIC and BIC score, while each predictor variable is statistically significant. At an R^2 of .7245, its sitting near the top next to modlag4. Although the R^2 is higher in the model for question 3, they contain many statistically insignificant variables and have a worse BIC and AIC relative to model 3. For these reasons, we will pick model 3 going forward.
+
+
+#Recursive Scheme
+
+```{r recursive}
+install.packages('dplyr')
+library('dplyr')
+prediction_model <-diff(log(ts(ts_data1$P, start = 1980, end = 1996, freq = 4)))
+month.list <-c(3,6,9,12)
+year.list <- c(1996:2010) 
+
+
+for(year in year.list){
+  for(month in month.list){
+    if(year == 2011 & month > 9){
+      break
+    }
+    else{
+      observation <- diff(log(ts(ts_data1$P, start = 1980, 
+                                 end = year + (month/12), freq = 4)))
+      
+      regress_observed <- dyn$lm(observation ~
+                                   stats::lag(observation, -1)+
+                                   stats::lag(observation, -2)+
+                                   stats::lag(observation, -3))
+      if(month > 5){
+        prediction <- predict(regress_observed, newdata = data.frame
+                              (index =  seq(as.Date("1980/4/1"),
+                           as.Date(paste
+                                   (as.character(year+2), "/", as.character(month-5), "/1", sep = '')),
+                           by = "quarter" )))
+      
+      }
+      else{
+      prediction <- predict(regress_observed, newdata = data.frame(index = 
+                                                        seq(as.Date("1980/4/1"), 
+                                                       as.Date(paste
+                                                      (as.character(year+1),"/",
+                                    as.character(month+7),"/1", sep = '')),
+                                    by = "quarter")))
+    
+      }
+    
+    
+    prediction_model <-ts(c((prediction_model),
+                            nth(prediction, -4)),start = 
+                            start(prediction_model), frequency =
+                            frequency(prediction_model))  
+    
+    }
+    }#for
+}
+plot(price_growth,ylab = 'price growth', col = 'black')
+lines(prediction_model, col = 'red')
+```
+
+Our Recursive scheme does a good job at picking up the the cyclical components presented in the data. Towards the end, we can see that the major decrease in price growth had a large effect on its prediction towards the later stage. I would hypothesize that a rolling scheme would have the exact same issue as presented in the recursive scheme.
+
+#Rolling Scheme
+```{r rolling}
+
+rolling_model <- diff(log(ts(ts_data1$P,start = 1980, end = 1996, freq = 4)))
+month1.list = c(3,6,9,12)
+year1.list = c(1995:2011)
+i = 1
+for (year in year1.list){
+  for(month in month1.list){
+    if(year ==2011 & month > 4){
+      break
+    }
+    else{
+      rolling_observations <- diff(log(ts(ts_data1$P[as.numeric(i+5):as.numeric(i+68)], 
+                                          start = year-15+(month/12), end =year+ (month/12) -.25,
+                                          freq = 4)))
+      regress_rolling_observations <- dyn$lm(rolling_observations ~ 
+                                            stats::lag(rolling_observations,-1)
+                                            +stats::lag(rolling_observations,-2)
+                                            +stats::lag(rolling_observations,-3))
+    
+      i =i+1    
+      if(month == 12){
+        rolling_predict <- predict(regress_rolling_observations,newdata = data.frame
+                           (index = 
+                           seq(as.Date(paste(as.character(year-14),"/1/1", sep = '')),
+                           as.Date(paste(as.character(year+1),"/12/31", sep = '')),
+                           by = "quarter")))
+        
+        
+      }
+      else{
+      rolling_predict <- predict(regress_rolling_observations, newdata = data.frame
+                      (index = 
+                      seq(as.Date(paste(as.character(year-15),"/",
+                                        as.character(month+1),"/1" , 
+                                        sep = '')),
+                      as.Date(paste(as.character(year+1), "/", 
+                                    as.character(month+2), "/1" ,
+                                    sep = '')), by ="quarter")))
+        
+    
+      }
+    rolling_model <-ts(c(rolling_model, nth(rolling_predict,-3)),
+                       start = start(rolling_model), frequency = frequency(rolling_model))
+      
+      }
+    
+  
+  }
+  
+}
+plot(price_growth,col = 'black')
+lines(rolling_model, col = 'red')
+
+```
+
+As predicted, towards the end, since there is a lot more weight placed onto the more recent observations, the rolling scheme had a tough time predicting. Overall, if there is a large spike from one year to the next, a recursive or rolling scheme would have a tough time anticipating whats next. After a major spike or outlier in the data, the model should be reconfigured to satisfy the fundamentals of the overall data.
+
+##5.4
+Update the time series AMEX and SP500
+Update the time series of AMEX and SP 500 in Section 5.2 Compute Autocorrelation functions and analyze how different/ similar they are to 5.6
+
+
+```{r amex}
+ts_data_5.4 <- read.table(file = 
+                            'C:\\Users\\Austin\\Documents\\R\\Exercise5.4.csv', 
+                          header = T, sep = ',')
+amex_acf<-acf(diff((ts_data_5.4$Adj.Close.Price.AMEX))
+              ,na.action = na.pass,
+              lag.max=10,
+              ylim=c(-0.0015,1))
+sp_acf <- acf(diff((ts_data_5.4$Adj.Close.Price.SP500)),lag.max=10,ylim = c(0,2))
+amex_acf[1:5]
+sp_acf[1:5]
+```
+
+The AMEX stock has a positive autocorrelation of .008, meaning in 100 days, the AMEX  stock trades more than 99 times, which is much more than the example on 5.6 where it is held onto 86 times in 100 days. The S&P has a negative Autocorrelation strength, so the model for 5.6 still holds. 
+
+
+##6.2 
+
+$y_{t}$ = 1.2 + .8$\epsilon{t-1}$  + $\epsilon{t}$
+
+$y_{t}$ = 1.2 + 1.25$\epsilon{t-1}$  + $\epsilon{t}$
+
+Since both of these processes replicate a MA(1) process, we should expect the time series to look like a covariance stationary with short-term memory. In terms of the ACF, we should see both have one statistically significant peak at lag 1 and an alterating, declining PACF. In terms of differences, we see that the first process with .8, is invertible because its coefficient value is less than 1. The second process does not share this property because its coefficient is greater than 1. We should also see a difference in the time series of the 1.25 coefficient as it should be more volatile and regress less to the mean.
+
+#simulation of both ACFs
+```{r simulation}
+
+ma61pt1_sim <- arima.sim(model = list(ma = .8),n =100)+1.2
+ma61pt2_sim <- arima.sim(model = list(ma = 1.25), n = 100) + 1.2
+plot(ma61pt1_sim)
+plot(ma61pt2_sim)
+acf(ma61pt1_sim, lag.max = 10, main = "ACF To Lag 10")
+acf(ma61pt2_sim, lag.max = 10, main = "ACF To Lag 10")
+```
+
+We can see that both ACFs exhibit a similar representation because both are MA(1) processes. The first model and second model has spikes after 1 sometimes, this is because the models are simulated instead of a theoretical value.  If the coefficient for the second model was higher, we would see less reversion to the mean and a higher amplitude for absolute spikes. Again, our model with a .8 coefficient would be the invertible process because its coefficient value is less than 1.
+
+
+
+## 6.4
+Solving for theoretical autocorrelation
+$y_{t}$ = 0.7 - 2$\epsilon{t-1}$  + 1.35$\epsilon{t-2}$ + $\epsilon{t}$
+
+```{r movingaverage}
+theoretical_acf <- ARMAacf(ar = 0 , ma = c(-2,1.35), lag.max = 10, pacf= FALSE)+.7
+theoretical_acf
+theo_values<-acf(theoretical_acf)
+theo_values[1:10]
+```
+
+Sample Autocorrelation
+```{r Sample}
+ma_sim <- arima.sim(model = list(ma = c(-2,1.35)),n =100)+.7
+ma_sim
+acf(ma_sim,lag.max=10, main = "Sample ACF")
+
+```
+
+The sample autocorrelation consistently has spikes at the 1, whereas the theoretical never reaches a spike for 1. This is the usefulness for sample autocorrelataion as it allows for useful investigation of the regression.
+
+
+##6.10
+
+```{r APPLE}
+
+apple_data <- read.table(file =
+                           'C:\\Users\\Austin\\Documents\\R\\Exercise6.10.csv', 
+                         header =T, sep = ',')
+ts_apple_data <- ts(apple_data$Return...., start = 2007,end = 2012 ,freq = 252)
+plot(ts_apple_data)
+apple_acf<-acf(apple_data$Return....)
+pacf(apple_data$Return....)
+
+
+modarma <- (arima(ts_apple_data ,order = c(0,0,16)))
+summary(modarma)
+forecast_mod_arma<- forecast(modarma,level = c(90,95),
+                             newdata = data.frame(t = seq(2012.7,2013,by =1/252)))
+plot(forecast_mod_arma,shadecols="oldstyle",xlim=(c(2011,2012)))
+```
+
+The time series indicates a covariance stationary with short term memory.
+There is a spike on the lag at 16, indicating that it may be a MA(16) process. The PACF has spikes at 4 and 16, and decays after 16. It is also an alternating PACF.
+
+When forecasting, it seems as though our model doesn't do a great job. There may be too much noise involved that our model does not capture. 

@@ -2,7 +2,9 @@
 title: "Homework 2"
 author: "Austin Lee"
 date: "February 7, 2019"
-output: github_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 
@@ -14,6 +16,7 @@ options(scipen=999)
 library('tseries')
 library('forecast')
 library('dyn')
+library('dplyr')
 ```
 
 #4.4
@@ -75,8 +78,6 @@ When we compare the models between lag 1,2,3,4 we see that modlag3, has the best
 #Recursive Scheme
 
 ```{r recursive}
-install.packages('dplyr')
-library('dplyr')
 prediction_model <-diff(log(ts(ts_data1$P, start = 1980, end = 1996, freq = 4)))
 month.list <-c(3,6,9,12)
 year.list <- c(1996:2010) 
